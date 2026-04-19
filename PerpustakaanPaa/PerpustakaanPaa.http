@@ -1,0 +1,6 @@
+@PerpustakaanPaa_HostAddress = http://localhost:5287
+
+GET {{PerpustakaanPaa_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
