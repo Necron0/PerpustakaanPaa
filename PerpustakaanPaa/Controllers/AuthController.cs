@@ -22,7 +22,6 @@ namespace PerpustakaanPaa.Controllers
             _connStr = config.GetConnectionString("DefaultConnection")!;
         }
 
-        /// <summary>Login dan dapatkan JWT token</summary>
         [AllowAnonymous]
         [HttpPost("login")]
         public IActionResult Login([FromBody] LoginDto dto)

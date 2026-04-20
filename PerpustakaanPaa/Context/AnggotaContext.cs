@@ -10,7 +10,6 @@ namespace PerpustakaanPaa.Context
 
         public AnggotaContext(string connStr) => _connStr = connStr;
 
-        // ── LIST ──────────────────────────────────────────────────────
         public List<Anggota> ListAnggota()
         {
             var list = new List<Anggota>();
@@ -27,8 +26,6 @@ namespace PerpustakaanPaa.Context
             db.Close();
             return list;
         }
-
-        // ── GET BY ID ─────────────────────────────────────────────────
         public Anggota? GetById(int id)
         {
             const string query = @"
@@ -45,7 +42,6 @@ namespace PerpustakaanPaa.Context
             return result;
         }
 
-        // ── AUTH ──────────────────────────────────────────────────────
         public (Anggota? anggota, string roleName) Authenticate(string email, string password)
         {
             const string query = @"
@@ -67,7 +63,6 @@ namespace PerpustakaanPaa.Context
             return (anggota, role);
         }
 
-        // ── INSERT ────────────────────────────────────────────────────
         public Anggota Insert(Anggota a, string password)
         {
             const string query = @"
@@ -89,7 +84,6 @@ namespace PerpustakaanPaa.Context
             return result;
         }
 
-        // ── UPDATE ────────────────────────────────────────────────────
         public bool Update(int id, Anggota a)
         {
             const string query = @"
@@ -109,7 +103,6 @@ namespace PerpustakaanPaa.Context
             return rows > 0;
         }
 
-        // ── SOFT DELETE ───────────────────────────────────────────────
         public bool Delete(int id)
         {
             const string query = @"
@@ -123,7 +116,6 @@ namespace PerpustakaanPaa.Context
             db.Close();
             return rows > 0;
         }
-
         private static Anggota MapAnggota(NpgsqlDataReader r) => new Anggota
         {
             id_anggota = r.GetInt32(0),

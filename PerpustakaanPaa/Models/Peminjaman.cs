@@ -8,8 +8,6 @@
         public string tanggal_pinjam { get; set; } = string.Empty;
         public string? tanggal_kembali { get; set; }
         public string status { get; set; } = "dipinjam";
-
-        // Untuk response gabungan (join)
         public string? nama_anggota { get; set; }
         public string? judul_buku { get; set; }
     }

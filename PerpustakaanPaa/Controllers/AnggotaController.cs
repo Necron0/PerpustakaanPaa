@@ -15,7 +15,6 @@ namespace PerpustakaanPaa.Controllers
         public AnggotaController(IConfiguration config)
             => _connStr = config.GetConnectionString("DefaultConnection")!;
 
-        // GET api/anggota
         [Authorize(Roles = "admin,petugas")]
         [HttpGet]
         public IActionResult GetAll()
@@ -31,7 +30,6 @@ namespace PerpustakaanPaa.Controllers
             }
         }
 
-        // GET api/anggota/{id}
         [HttpGet("{id}")]
         public IActionResult GetById(int id)
         {
@@ -48,7 +46,6 @@ namespace PerpustakaanPaa.Controllers
             }
         }
 
-        // POST api/anggota  (register anggota baru — public)
         [AllowAnonymous]
         [HttpPost]
         public IActionResult Register([FromBody] RegisterDto dto)
@@ -79,7 +76,6 @@ namespace PerpustakaanPaa.Controllers
             }
         }
 
-        // PUT api/anggota/{id}
         [HttpPut("{id}")]
         public IActionResult Update(int id, [FromBody] Anggota anggota)
         {
@@ -99,7 +95,6 @@ namespace PerpustakaanPaa.Controllers
             }
         }
 
-        // DELETE api/anggota/{id}
         [Authorize(Roles = "admin")]
         [HttpDelete("{id}")]
         public IActionResult Delete(int id)

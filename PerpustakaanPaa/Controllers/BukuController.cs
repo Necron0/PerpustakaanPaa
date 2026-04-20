@@ -15,7 +15,6 @@ namespace PerpustakaanPaa.Controllers
         public BukuController(IConfiguration config)
             => _connStr = config.GetConnectionString("DefaultConnection")!;
 
-        // GET api/buku  → daftar semua buku
         [HttpGet]
         public IActionResult GetAll()
         {
@@ -30,7 +29,6 @@ namespace PerpustakaanPaa.Controllers
             }
         }
 
-        // GET api/buku/{id}  → detail buku
         [HttpGet("{id}")]
         public IActionResult GetById(int id)
         {
@@ -47,7 +45,6 @@ namespace PerpustakaanPaa.Controllers
             }
         }
 
-        // POST api/buku  → tambah buku baru
         [Authorize(Roles = "admin,petugas")]
         [HttpPost]
         public IActionResult Create([FromBody] Buku buku)
@@ -66,7 +63,6 @@ namespace PerpustakaanPaa.Controllers
             }
         }
 
-        // PUT api/buku/{id}  → update buku
         [Authorize(Roles = "admin,petugas")]
         [HttpPut("{id}")]
         public IActionResult Update(int id, [FromBody] Buku buku)
@@ -87,7 +83,6 @@ namespace PerpustakaanPaa.Controllers
             }
         }
 
-        // DELETE api/buku/{id}  → soft delete
         [Authorize(Roles = "admin")]
         [HttpDelete("{id}")]
         public IActionResult Delete(int id)
