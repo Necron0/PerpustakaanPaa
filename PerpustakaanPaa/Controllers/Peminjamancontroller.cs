@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using PerpustakaanPaa.Context;
 using PerpustakaanPaa.Models;
+using System.Security.Claims;
 
 namespace Perpustakaan.Controllers
 {
@@ -15,12 +16,29 @@ namespace Perpustakaan.Controllers
         public PeminjamanController(IConfiguration config)
             => _connStr = config.GetConnectionString("DefaultConnection")!;
 
+
+        private int GetCurrentUserId()
+            => int.Parse(User.FindFirstValue("id_anggota")!);
+
+        private bool IsAdminOrPetugas()
+            => User.IsInRole("admin") || User.IsInRole("petugas");
+
+
         [HttpGet]
         public IActionResult GetAll([FromQuery] string? status)
         {
             try
             {
-                var list = new PeminjamanContext(_connStr).ListPeminjaman(status);
+                List<Peminjaman> list;
+                if (IsAdminOrPetugas())
+                {
+                    list = new PeminjamanContext(_connStr).ListPeminjaman(status);
+                }
+                else
+                {
+                    list = new PeminjamanContext(_connStr)
+                               .ListPeminjamanByAnggota(GetCurrentUserId(), status);
+                }
                 return Ok(ApiResponse.SuccessList(list, list.Count));
             }
             catch (Exception ex)
@@ -37,6 +55,10 @@ namespace Perpustakaan.Controllers
                 var p = new PeminjamanContext(_connStr).GetById(id);
                 if (p == null)
                     return NotFound(ApiResponse.Error("Data peminjaman tidak ditemukan", 404));
+
+                if (!IsAdminOrPetugas() && p.id_anggota != GetCurrentUserId())
+                    return StatusCode(403, ApiResponse.Error("Anda tidak memiliki akses ke data peminjaman ini", 403));
+
                 return Ok(ApiResponse.Success(p));
             }
             catch (Exception ex)
@@ -45,11 +67,17 @@ namespace Perpustakaan.Controllers
             }
         }
 
-        [HttpPost]
         public IActionResult Pinjam([FromBody] PinjamRequest req)
         {
             if (req.id_anggota <= 0 || req.id_buku <= 0)
                 return BadRequest(ApiResponse.Error("id_anggota dan id_buku wajib diisi", 400));
+
+            if (!IsAdminOrPetugas())
+            {
+                int currentId = GetCurrentUserId();
+                if (req.id_anggota != currentId)
+                    return StatusCode(403, ApiResponse.Error("Anda hanya boleh meminjam buku atas nama diri sendiri", 403));
+            }
 
             try
             {
@@ -74,9 +102,17 @@ namespace Perpustakaan.Controllers
 
             try
             {
+                var p = new PeminjamanContext(_connStr).GetById(id);
+                if (p == null)
+                    return NotFound(ApiResponse.Error("Data peminjaman tidak ditemukan", 404));
+
+                if (!IsAdminOrPetugas() && p.id_anggota != GetCurrentUserId())
+                    return StatusCode(403, ApiResponse.Error("Anda hanya boleh mengembalikan buku yang Anda pinjam sendiri", 403));
+
                 bool ok = new PeminjamanContext(_connStr).Kembalikan(id, req);
                 if (!ok)
-                    return BadRequest(ApiResponse.Error("Peminjaman tidak ditemukan atau sudah dikembalikan", 400));
+                    return BadRequest(ApiResponse.Error("Peminjaman sudah dikembalikan sebelumnya", 400));
+
                 return Ok(ApiResponse.Success(new { message = "Buku berhasil dikembalikan" }));
             }
             catch (Exception ex)

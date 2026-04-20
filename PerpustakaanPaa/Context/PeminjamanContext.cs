@@ -10,7 +10,6 @@ namespace PerpustakaanPaa.Context
 
         public PeminjamanContext(string connStr) => _connStr = connStr;
 
-
         public List<Peminjaman> ListPeminjaman(string? status = null)
         {
             var list = new List<Peminjaman>();
@@ -34,7 +33,30 @@ namespace PerpustakaanPaa.Context
             return list;
         }
 
+        public List<Peminjaman> ListPeminjamanByAnggota(int idAnggota, string? status = null)
+        {
+            var list = new List<Peminjaman>();
+            var query = @"
+                SELECT p.id_peminjaman, p.id_anggota, p.id_buku,
+                       TO_CHAR(p.tanggal_pinjam,'YYYY-MM-DD'),
+                       TO_CHAR(p.tanggal_kembali,'YYYY-MM-DD'),
+                       p.status, a.nama, b.judul
+                FROM peminjaman p
+                JOIN anggota a ON p.id_anggota = a.id_anggota
+                JOIN buku b    ON p.id_buku    = b.id_buku
+                WHERE p.id_anggota = @id_anggota"
+                + (status != null ? " AND p.status = @status" : "")
+                + " ORDER BY p.created_at DESC";
 
+            var db = new SqlDBHelper(_connStr);
+            using var cmd = db.GetCommand(query);
+            cmd.Parameters.AddWithValue("@id_anggota", idAnggota);
+            if (status != null) cmd.Parameters.AddWithValue("@status", status);
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read()) list.Add(MapPeminjaman(reader));
+            db.Close();
+            return list;
+        }
         public Peminjaman? GetById(int id)
         {
             const string query = @"
@@ -56,10 +78,8 @@ namespace PerpustakaanPaa.Context
             return result;
         }
 
-
         public Peminjaman Pinjam(PinjamRequest req)
         {
-
             const string updateStok = @"
                 UPDATE buku SET stok = stok - 1, updated_at = NOW()
                 WHERE id_buku = @id_buku AND stok > 0";
@@ -90,10 +110,8 @@ namespace PerpustakaanPaa.Context
             return GetById(newId)!;
         }
 
-
         public bool Kembalikan(int id, KembaliRequest req)
         {
-
             const string updatePinjam = @"
                 UPDATE peminjaman
                 SET tanggal_kembali = @tgl_kembali, status = 'dikembalikan', updated_at = NOW()
@@ -107,7 +125,6 @@ namespace PerpustakaanPaa.Context
             db.Close();
             if (rows == 0) return false;
 
-
             var p = GetById(id)!;
             const string updateStok = "UPDATE buku SET stok = stok + 1, updated_at = NOW() WHERE id_buku = @id";
             var db2 = new SqlDBHelper(_connStr);
@@ -117,7 +134,6 @@ namespace PerpustakaanPaa.Context
             db2.Close();
             return true;
         }
-
 
         public bool Delete(int id)
         {

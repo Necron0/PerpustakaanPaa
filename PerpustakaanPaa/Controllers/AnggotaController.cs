@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using PerpustakaanPaa.Context;
 using PerpustakaanPaa.Models;
+using System.Security.Claims;
 
 namespace PerpustakaanPaa.Controllers
 {
@@ -14,6 +15,12 @@ namespace PerpustakaanPaa.Controllers
 
         public AnggotaController(IConfiguration config)
             => _connStr = config.GetConnectionString("DefaultConnection")!;
+
+        private int GetCurrentUserId()
+            => int.Parse(User.FindFirstValue("id_anggota")!);
+
+        private bool IsAdminOrPetugas()
+            => User.IsInRole("admin") || User.IsInRole("petugas");
 
         [Authorize(Roles = "admin,petugas")]
         [HttpGet]
@@ -33,6 +40,9 @@ namespace PerpustakaanPaa.Controllers
         [HttpGet("{id}")]
         public IActionResult GetById(int id)
         {
+            if (!IsAdminOrPetugas() && GetCurrentUserId() != id)
+                return StatusCode(403, ApiResponse.Error("Anda tidak memiliki akses ke data anggota lain", 403));
+
             try
             {
                 var anggota = new AnggotaContext(_connStr).GetById(id);
@@ -61,7 +71,7 @@ namespace PerpustakaanPaa.Controllers
                     nama = dto.Nama,
                     email = dto.Email,
                     alamat = dto.Alamat,
-                    id_role = 2
+                    id_role = 2 
                 };
                 var result = new AnggotaContext(_connStr).Insert(anggota, dto.Password);
                 return StatusCode(201, ApiResponse.Success(result, 201));
@@ -77,13 +87,34 @@ namespace PerpustakaanPaa.Controllers
         }
 
         [HttpPut("{id}")]
-        public IActionResult Update(int id, [FromBody] Anggota anggota)
+        public IActionResult Update(int id, [FromBody] UpdateAnggotaDto dto)
         {
-            if (string.IsNullOrWhiteSpace(anggota.nama) || string.IsNullOrWhiteSpace(anggota.email))
+            if (string.IsNullOrWhiteSpace(dto.Nama) || string.IsNullOrWhiteSpace(dto.Email))
                 return BadRequest(ApiResponse.Error("Nama dan email wajib diisi", 400));
+
+            var currentUserId = GetCurrentUserId();
+            bool isAdmin = User.IsInRole("admin");
+
+            if (!IsAdminOrPetugas() && currentUserId != id)
+                return StatusCode(403, ApiResponse.Error("Anda hanya boleh mengubah data diri sendiri", 403));
+
+            if (!isAdmin)
+            {
+                var existing = new AnggotaContext(_connStr).GetById(id);
+                if (existing == null)
+                    return NotFound(ApiResponse.Error("Anggota tidak ditemukan", 404));
+                roleToUse = existing.id_role;
+            }
 
             try
             {
+                var anggota = new Anggota
+                {
+                    nama = dto.Nama,
+                    email = dto.Email,
+                    alamat = dto.Alamat,
+                    id_role = roleToUse
+                };
                 bool updated = new AnggotaContext(_connStr).Update(id, anggota);
                 if (!updated)
                     return NotFound(ApiResponse.Error("Anggota tidak ditemukan", 404));
@@ -99,6 +130,9 @@ namespace PerpustakaanPaa.Controllers
         [HttpDelete("{id}")]
         public IActionResult Delete(int id)
         {
+            if (GetCurrentUserId() == id)
+                return BadRequest(ApiResponse.Error("Admin tidak dapat menghapus akunnya sendiri", 400));
+
             try
             {
                 bool deleted = new AnggotaContext(_connStr).Delete(id);
@@ -119,5 +153,13 @@ namespace PerpustakaanPaa.Controllers
         public string Email { get; set; } = string.Empty;
         public string Password { get; set; } = string.Empty;
         public string? Alamat { get; set; }
+    }
+
+    public class UpdateAnggotaDto
+    {
+        public string Nama { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string? Alamat { get; set; }
+        public int IdRole { get; set; } = 2;
     }
 }
