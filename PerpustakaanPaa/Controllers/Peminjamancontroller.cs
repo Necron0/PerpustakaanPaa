@@ -16,14 +16,11 @@ namespace Perpustakaan.Controllers
         public PeminjamanController(IConfiguration config)
             => _connStr = config.GetConnectionString("DefaultConnection")!;
 
-
         private int GetCurrentUserId()
             => int.Parse(User.FindFirstValue("id_anggota")!);
 
         private bool IsAdminOrPetugas()
             => User.IsInRole("admin") || User.IsInRole("petugas");
-
-
         [HttpGet]
         public IActionResult GetAll([FromQuery] string? status)
         {
@@ -31,14 +28,11 @@ namespace Perpustakaan.Controllers
             {
                 List<Peminjaman> list;
                 if (IsAdminOrPetugas())
-                {
                     list = new PeminjamanContext(_connStr).ListPeminjaman(status);
-                }
                 else
-                {
                     list = new PeminjamanContext(_connStr)
                                .ListPeminjamanByAnggota(GetCurrentUserId(), status);
-                }
+
                 return Ok(ApiResponse.SuccessList(list, list.Count));
             }
             catch (Exception ex)
@@ -47,6 +41,7 @@ namespace Perpustakaan.Controllers
             }
         }
 
+ 
         [HttpGet("{id}")]
         public IActionResult GetById(int id)
         {
@@ -67,6 +62,7 @@ namespace Perpustakaan.Controllers
             }
         }
 
+        [HttpPost]
         public IActionResult Pinjam([FromBody] PinjamRequest req)
         {
             if (req.id_anggota <= 0 || req.id_buku <= 0)
@@ -93,7 +89,6 @@ namespace Perpustakaan.Controllers
                 return StatusCode(500, ApiResponse.Error($"Gagal meminjam buku: {ex.Message}", 500));
             }
         }
-
         [HttpPut("{id}/kembalikan")]
         public IActionResult Kembalikan(int id, [FromBody] KembaliRequest req)
         {

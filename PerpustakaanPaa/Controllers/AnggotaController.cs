@@ -56,24 +56,26 @@ namespace PerpustakaanPaa.Controllers
             }
         }
 
+        // Pakai model Anggota langsung + password sebagai query param terpisah
+        // karena password tidak ada di model Anggota
         [AllowAnonymous]
         [HttpPost]
-        public IActionResult Register([FromBody] RegisterDto dto)
+        public IActionResult Register([FromBody] RegisterRequest req)
         {
-            if (string.IsNullOrWhiteSpace(dto.Nama) || string.IsNullOrWhiteSpace(dto.Email)
-                || string.IsNullOrWhiteSpace(dto.Password))
+            if (string.IsNullOrWhiteSpace(req.nama) || string.IsNullOrWhiteSpace(req.email)
+                || string.IsNullOrWhiteSpace(req.password))
                 return BadRequest(ApiResponse.Error("Nama, email, dan password wajib diisi", 400));
 
             try
             {
                 var anggota = new Anggota
                 {
-                    nama = dto.Nama,
-                    email = dto.Email,
-                    alamat = dto.Alamat,
+                    nama = req.nama,
+                    email = req.email,
+                    alamat = req.alamat,
                     id_role = 2 
                 };
-                var result = new AnggotaContext(_connStr).Insert(anggota, dto.Password);
+                var result = new AnggotaContext(_connStr).Insert(anggota, req.password);
                 return StatusCode(201, ApiResponse.Success(result, 201));
             }
             catch (Exception ex) when (ex.Message.Contains("unique"))
@@ -87,34 +89,25 @@ namespace PerpustakaanPaa.Controllers
         }
 
         [HttpPut("{id}")]
-        public IActionResult Update(int id, [FromBody] UpdateAnggotaDto dto)
+        public IActionResult Update(int id, [FromBody] Anggota anggota)
         {
-            if (string.IsNullOrWhiteSpace(dto.Nama) || string.IsNullOrWhiteSpace(dto.Email))
+            if (string.IsNullOrWhiteSpace(anggota.nama) || string.IsNullOrWhiteSpace(anggota.email))
                 return BadRequest(ApiResponse.Error("Nama dan email wajib diisi", 400));
 
-            var currentUserId = GetCurrentUserId();
-            bool isAdmin = User.IsInRole("admin");
-
-            if (!IsAdminOrPetugas() && currentUserId != id)
+            if (!IsAdminOrPetugas() && GetCurrentUserId() != id)
                 return StatusCode(403, ApiResponse.Error("Anda hanya boleh mengubah data diri sendiri", 403));
 
-            if (!isAdmin)
+            // Non-admin tidak boleh mengubah role
+            if (!User.IsInRole("admin"))
             {
                 var existing = new AnggotaContext(_connStr).GetById(id);
                 if (existing == null)
                     return NotFound(ApiResponse.Error("Anggota tidak ditemukan", 404));
-                roleToUse = existing.id_role;
+                anggota.id_role = existing.id_role; 
             }
 
             try
             {
-                var anggota = new Anggota
-                {
-                    nama = dto.Nama,
-                    email = dto.Email,
-                    alamat = dto.Alamat,
-                    id_role = roleToUse
-                };
                 bool updated = new AnggotaContext(_connStr).Update(id, anggota);
                 if (!updated)
                     return NotFound(ApiResponse.Error("Anggota tidak ditemukan", 404));
@@ -147,19 +140,11 @@ namespace PerpustakaanPaa.Controllers
         }
     }
 
-    public class RegisterDto
+    public class RegisterRequest
     {
-        public string Nama { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;
-        public string Password { get; set; } = string.Empty;
-        public string? Alamat { get; set; }
-    }
-
-    public class UpdateAnggotaDto
-    {
-        public string Nama { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;
-        public string? Alamat { get; set; }
-        public int IdRole { get; set; } = 2;
+        public string nama { get; set; } = string.Empty;
+        public string email { get; set; } = string.Empty;
+        public string password { get; set; } = string.Empty;
+        public string? alamat { get; set; }
     }
 }
