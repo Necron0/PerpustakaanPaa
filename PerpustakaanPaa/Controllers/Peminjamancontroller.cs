@@ -1,128 +1,147 @@
-﻿using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
-using PerpustakaanPaa.Context;
+﻿using Npgsql;
+using PerpustakaanPaa.Data;
+using PerpustakaanPaa.Models;
+using PerpustakaanPaa.Data;
 using PerpustakaanPaa.Models;
 
-namespace PerpustakaanPaa.Controllers
+namespace Perpustakaan.Context
 {
-    [Authorize]
-    [ApiController]
-    [Route("api/anggota")]
-    public class AnggotaController : ControllerBase
+    public class PeminjamanContext
     {
         private readonly string _connStr;
 
-        public AnggotaController(IConfiguration config)
-            => _connStr = config.GetConnectionString("DefaultConnection")!;
+        public PeminjamanContext(string connStr) => _connStr = connStr;
 
-        // GET api/anggota
-        [Authorize(Roles = "admin,petugas")]
-        [HttpGet]
-        public IActionResult GetAll()
+        // ── LIST semua peminjaman ─────────────────────────────────────
+        public List<Peminjaman> ListPeminjaman(string? status = null)
         {
-            try
-            {
-                var list = new AnggotaContext(_connStr).ListAnggota();
-                return Ok(ApiResponse.SuccessList(list, list.Count));
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, ApiResponse.Error($"Gagal mengambil data: {ex.Message}", 500));
-            }
+            var list = new List<Peminjaman>();
+            var query = @"
+                SELECT p.id_peminjaman, p.id_anggota, p.id_buku,
+                       TO_CHAR(p.tanggal_pinjam,'YYYY-MM-DD'),
+                       TO_CHAR(p.tanggal_kembali,'YYYY-MM-DD'),
+                       p.status, a.nama, b.judul
+                FROM peminjaman p
+                JOIN anggota a ON p.id_anggota = a.id_anggota
+                JOIN buku b    ON p.id_buku    = b.id_buku"
+                + (status != null ? " WHERE p.status = @status" : "")
+                + " ORDER BY p.created_at DESC";
+
+            var db = new SqlDBHelper(_connStr);
+            using var cmd = db.GetCommand(query);
+            if (status != null) cmd.Parameters.AddWithValue("@status", status);
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read()) list.Add(MapPeminjaman(reader));
+            db.Close();
+            return list;
         }
 
-        // GET api/anggota/{id}
-        [HttpGet("{id}")]
-        public IActionResult GetById(int id)
+        // ── GET BY ID ─────────────────────────────────────────────────
+        public Peminjaman? GetById(int id)
         {
-            try
-            {
-                var anggota = new AnggotaContext(_connStr).GetById(id);
-                if (anggota == null)
-                    return NotFound(ApiResponse.Error("Anggota tidak ditemukan", 404));
-                return Ok(ApiResponse.Success(anggota));
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, ApiResponse.Error($"Gagal mengambil data: {ex.Message}", 500));
-            }
+            const string query = @"
+                SELECT p.id_peminjaman, p.id_anggota, p.id_buku,
+                       TO_CHAR(p.tanggal_pinjam,'YYYY-MM-DD'),
+                       TO_CHAR(p.tanggal_kembali,'YYYY-MM-DD'),
+                       p.status, a.nama, b.judul
+                FROM peminjaman p
+                JOIN anggota a ON p.id_anggota = a.id_anggota
+                JOIN buku b    ON p.id_buku    = b.id_buku
+                WHERE p.id_peminjaman = @id";
+
+            var db = new SqlDBHelper(_connStr);
+            using var cmd = db.GetCommand(query);
+            cmd.Parameters.AddWithValue("@id", id);
+            using var reader = cmd.ExecuteReader();
+            var result = reader.Read() ? MapPeminjaman(reader) : null;
+            db.Close();
+            return result;
         }
 
-        // POST api/anggota  (register anggota baru — public)
-        [AllowAnonymous]
-        [HttpPost]
-        public IActionResult Register([FromBody] RegisterDto dto)
+        // ── INSERT (pinjam buku) ───────────────────────────────────────
+        public Peminjaman Pinjam(PinjamRequest req)
         {
-            if (string.IsNullOrWhiteSpace(dto.Nama) || string.IsNullOrWhiteSpace(dto.Email)
-                || string.IsNullOrWhiteSpace(dto.Password))
-                return BadRequest(ApiResponse.Error("Nama, email, dan password wajib diisi", 400));
+            // Kurangi stok
+            const string updateStok = @"
+                UPDATE buku SET stok = stok - 1, updated_at = NOW()
+                WHERE id_buku = @id_buku AND stok > 0";
 
-            try
+            var db = new SqlDBHelper(_connStr);
+            using (var cmd = db.GetCommand(updateStok))
             {
-                var anggota = new Anggota
-                {
-                    nama = dto.Nama,
-                    email = dto.Email,
-                    alamat = dto.Alamat,
-                    id_role = 2
-                };
-                var result = new AnggotaContext(_connStr).Insert(anggota, dto.Password);
-                return StatusCode(201, ApiResponse.Success(result, 201));
+                cmd.Parameters.AddWithValue("@id_buku", req.id_buku);
+                int rows = cmd.ExecuteNonQuery();
+                if (rows == 0) throw new InvalidOperationException("Stok buku habis atau buku tidak ditemukan");
             }
-            catch (Exception ex) when (ex.Message.Contains("unique"))
-            {
-                return Conflict(ApiResponse.Error("Email sudah terdaftar", 409));
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, ApiResponse.Error($"Gagal mendaftar: {ex.Message}", 500));
-            }
+            db.Close();
+
+            const string insert = @"
+                INSERT INTO peminjaman (id_anggota, id_buku, tanggal_pinjam, status, created_at, updated_at)
+                VALUES (@id_anggota, @id_buku, CURRENT_DATE, 'dipinjam', NOW(), NOW())
+                RETURNING id_peminjaman";
+
+            var db2 = new SqlDBHelper(_connStr);
+            using var cmd2 = db2.GetCommand(insert);
+            cmd2.Parameters.AddWithValue("@id_anggota", req.id_anggota);
+            cmd2.Parameters.AddWithValue("@id_buku", req.id_buku);
+            using var reader = cmd2.ExecuteReader();
+            reader.Read();
+            int newId = reader.GetInt32(0);
+            db2.Close();
+
+            return GetById(newId)!;
         }
 
-        // PUT api/anggota/{id}
-        [HttpPut("{id}")]
-        public IActionResult Update(int id, [FromBody] Anggota anggota)
+        // ── UPDATE (kembalikan buku) ───────────────────────────────────
+        public bool Kembalikan(int id, KembaliRequest req)
         {
-            if (string.IsNullOrWhiteSpace(anggota.nama) || string.IsNullOrWhiteSpace(anggota.email))
-                return BadRequest(ApiResponse.Error("Nama dan email wajib diisi", 400));
+            // Update status peminjaman
+            const string updatePinjam = @"
+                UPDATE peminjaman
+                SET tanggal_kembali = @tgl_kembali, status = 'dikembalikan', updated_at = NOW()
+                WHERE id_peminjaman = @id AND status = 'dipinjam'";
 
-            try
-            {
-                bool updated = new AnggotaContext(_connStr).Update(id, anggota);
-                if (!updated)
-                    return NotFound(ApiResponse.Error("Anggota tidak ditemukan", 404));
-                return Ok(ApiResponse.Success(new { message = "Anggota berhasil diperbarui" }));
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, ApiResponse.Error($"Gagal memperbarui: {ex.Message}", 500));
-            }
+            var db = new SqlDBHelper(_connStr);
+            using var cmd = db.GetCommand(updatePinjam);
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.Parameters.AddWithValue("@tgl_kembali", DateOnly.Parse(req.tanggal_kembali));
+            int rows = cmd.ExecuteNonQuery();
+            db.Close();
+            if (rows == 0) return false;
+
+            // Kembalikan stok
+            var p = GetById(id)!;
+            const string updateStok = "UPDATE buku SET stok = stok + 1, updated_at = NOW() WHERE id_buku = @id";
+            var db2 = new SqlDBHelper(_connStr);
+            using var cmd2 = db2.GetCommand(updateStok);
+            cmd2.Parameters.AddWithValue("@id", p.id_buku);
+            cmd2.ExecuteNonQuery();
+            db2.Close();
+            return true;
         }
 
-        // DELETE api/anggota/{id}
-        [Authorize(Roles = "admin")]
-        [HttpDelete("{id}")]
-        public IActionResult Delete(int id)
+        // ── DELETE ────────────────────────────────────────────────────
+        public bool Delete(int id)
         {
-            try
-            {
-                bool deleted = new AnggotaContext(_connStr).Delete(id);
-                if (!deleted)
-                    return NotFound(ApiResponse.Error("Anggota tidak ditemukan", 404));
-                return Ok(ApiResponse.Success(new { message = "Anggota berhasil dihapus" }));
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, ApiResponse.Error($"Gagal menghapus: {ex.Message}", 500));
-            }
+            const string query = "DELETE FROM peminjaman WHERE id_peminjaman = @id";
+            var db = new SqlDBHelper(_connStr);
+            using var cmd = db.GetCommand(query);
+            cmd.Parameters.AddWithValue("@id", id);
+            int rows = cmd.ExecuteNonQuery();
+            db.Close();
+            return rows > 0;
         }
-    }
 
-    public class RegisterDto
-    {
-        public string Nama { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;
-        public string Password { get; set; } = string.Empty;
-        public string? Alamat { get; set; }
+        private static Peminjaman MapPeminjaman(NpgsqlDataReader r) => new Peminjaman
+        {
+            id_peminjaman = r.GetInt32(0),
+            id_anggota = r.GetInt32(1),
+            id_buku = r.GetInt32(2),
+            tanggal_pinjam = r.IsDBNull(3) ? "" : r.GetString(3),
+            tanggal_kembali = r.IsDBNull(4) ? null : r.GetString(4),
+            status = r.GetString(5),
+            nama_anggota = r.IsDBNull(6) ? null : r.GetString(6),
+            judul_buku = r.IsDBNull(7) ? null : r.GetString(7)
+        };
     }
 }
