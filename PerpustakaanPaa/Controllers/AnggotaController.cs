@@ -56,8 +56,6 @@ namespace PerpustakaanPaa.Controllers
             }
         }
 
-        // Pakai model Anggota langsung + password sebagai query param terpisah
-        // karena password tidak ada di model Anggota
         [AllowAnonymous]
         [HttpPost]
         public IActionResult Register([FromBody] RegisterRequest req)
@@ -97,7 +95,7 @@ namespace PerpustakaanPaa.Controllers
             if (!IsAdminOrPetugas() && GetCurrentUserId() != id)
                 return StatusCode(403, ApiResponse.Error("Anda hanya boleh mengubah data diri sendiri", 403));
 
-            // Non-admin tidak boleh mengubah role
+
             if (!User.IsInRole("admin"))
             {
                 var existing = new AnggotaContext(_connStr).GetById(id);
